@@ -7,11 +7,9 @@ This Home Assistant configuration implements **ET-based (evapotranspiration) irr
 
 ### What it does
 - **Computes daily ET** from weather inputs (temperature, humidity, wind speed, and sunlight/solar proxy where available) using FAO-56 reference ET equations.
-- **Tracks a water balance (“bucket”)** by subtracting evapotranspiration and adding measured or forecast rainfall.
+- **Tracks a water balance (“bucket”)** by subtracting evapotranspiration and scales for seasons/crop coefficients.
 - **Derives per-zone run time** so irrigation compensates for net moisture loss, with configurable minimums and maximums.
-- **Skips or reduces watering after rain** and scales for seasons/crop coefficients.
-- **Integrates with switches/valves** exposed in Home Assistant (relays, smart plugs, etc.).
-- **Runs on a schedule** (e.g., early morning) and resets daily metrics at midnight.
+- **Gives values to integrate with switches/valves** exposed in Home Assistant (relays, smart plugs, etc.).
 
 ### Why it’s useful
 - Waters precisely what the plants used, **saving water** and preventing over-watering.
@@ -26,7 +24,6 @@ This Home Assistant configuration implements **ET-based (evapotranspiration) irr
 ### Outputs
 - Sensors for ET and water balance.
 - Calculated **irrigation duration per zone**.
-- Service calls to control irrigation valves or switches within configured time windows.
 
 > **Note:** Update the YAML entity IDs, services, and coefficients to match your Home Assistant setup.
 
