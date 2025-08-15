@@ -1,0 +1,175 @@
+title: Thuis
+views:
+  - title: Irrigatie - ET
+    path: irrigatie-et
+    icon: mdi:sprinkler-variant
+    type: masonry
+    cards:
+      - square: false
+        type: grid
+        columns: 3
+        cards:
+          - type: gauge
+            name: ET0
+            entity: sensor.et0_last_hour_avg_mm_h
+            unit: mm/h
+            min: 0
+            max: 0.5
+          - type: gauge
+            name: ETc Veg
+            entity: sensor.etc_veg_last_hour_avg_mm_h
+            unit: mm/h
+            min: 0
+            max: 0.5
+          - type: gauge
+            name: ETc Lawn
+            entity: sensor.etc_lawn_last_hour_avg_mm_h
+            unit: mm/h
+            min: 0
+            max: 0.5
+        title: Uur gemiddelde
+      - square: false
+        type: grid
+        columns: 3
+        cards:
+          - graph: none
+            type: sensor
+            name: ET0
+            entity: sensor.et0_daily
+            detail: 1
+          - graph: none
+            type: sensor
+            name: ETc Veg
+            entity: sensor.etc_veg_daily
+            detail: 1
+          - graph: none
+            type: sensor
+            name: ETc Lawn
+            entity: sensor.etc_lawn_daily
+            detail: 1
+        title: Dag totaal waarde
+      - type: history-graph
+        title: Uurverloop ET (24 uur)
+        hours_to_show: 24
+        refresh_interval: 30
+        entities:
+          - entity: sensor.et0_hourly_mm_h
+            name: ET0
+          - entity: sensor.etc_veg_hourly_mm_h
+            name: ETc Veg
+          - entity: sensor.etc_lawn_hourly_mm_h
+            name: ETc Lawn
+      - chart_type: bar
+        period: day
+        type: statistics-graph
+        title: Dagtotalen (7 dagen)
+        days_to_show: 7
+        entities:
+          - entity: sensor.et0_daily
+            name: ET0
+          - entity: sensor.etc_veg_daily
+            name: ETc Veg
+          - entity: sensor.etc_lawn_daily
+            name: ETc Lawn
+        stat_types:
+          - state
+      - type: entities
+        title: Modelinstellingen
+        entities:
+          - entity: input_number.wind_height_m
+            icon: mdi:weather-windy
+          - entity: input_number.station_elevation_m
+            icon: ''
+          - type: divider
+          - entity: input_number.kc_veg_winter
+          - entity: input_number.kc_veg_shoulder
+          - entity: input_number.kc_veg_summer
+          - entity: input_number.kc_lawn_fixed
+          - type: divider
+          - entity: input_number.sm_dry_pct
+            icon: ''
+          - entity: input_number.sm_wet_pct
+          - entity: input_number.ke_max
+          - type: divider
+          - entity: input_number.lawn_area
+            icon: mdi:texture-box
+          - entity: input_number.garden_border_area
+            icon: mdi:texture-box
+          - entity: input_number.lawn_sprinkler
+            name: Sprinklers grasmat (L/min)
+            icon: mdi:sprinkler-variant
+          - entity: input_number.garden_border_dripsystem
+            name: Microdrip border (L/min)
+            icon: mdi:water
+      - type: entities
+        title: Kc/Ke (actueel)
+        entities:
+          - entity: sensor.kc_veg_baseline_season
+            name: Kc Veg baseline (seizoen)
+          - entity: sensor.kc_veg_dynamic
+            name: Kc Veg dynamisch
+          - entity: sensor.kc_veg_extra_ke_soil
+            name: Ke (bodemvocht)
+          - type: divider
+          - entity: sensor.et_core
+            name: ET Core (debug JSON)
+            icon: mdi:code-json
+      - type: markdown
+        title: Uitleg irrigatie-indicatoren
+        content: >
+          ## Begrippenlijst
+
+
+          **ET₀ – Referentie-evapotranspiratie**  
+
+          *Klimaatvraag naar water*  
+
+          Hoeveel water (in **mm**) verdampt per m² en wordt verbruikt door een
+          referentiegrasveld onder ideale omstandigheden.  
+
+          -> Afhankelijk van **temperatuur**, **zonnestraling**, **wind** en
+          **luchtvochtigheid**.
+
+
+          **ETc – Gewas-evapotranspiratie**  
+
+          *Werkelijke waterbehoefte*  
+
+          De verdamping en het waterverbruik van jouw gewas of vegetatie.  
+
+          -> Formule: `ETc = ET₀ × Kc`.
+
+
+          **Kc – Crop Coefficient**  
+
+          Geeft aan hoeveel water een gewas gebruikt t.o.v. referentiegras.  
+
+          - **Kc baseline** = vaste seizoenswaarde  
+
+          - **Kc dynamisch** = baseline + bodemcorrectie (Ke)
+
+
+          **Ke – Evaporatie-coëfficiënt**  
+
+          Extra verdamping door natte bodem na regen of irrigatie.  
+
+          -> Loopt af naarmate de bodem opdroogt.
+
+
+          **Eenheden**  
+
+          - *mm/h*: verdamping per uur  
+
+          - *mm/dag*: totaal verdampt water per dag
+
+
+          **Praktisch gebruik**  
+
+          - Hoge ET₀ = veel irrigatie nodig  
+
+          - ETc = afgestemd op type gewas en omstandigheden  
+
+          - Kc/Ke helpen om precies genoeg water te geven
+
+          - Liters water nodig = ET (mm) × oppervlakte (m²)
+        text_only: true
