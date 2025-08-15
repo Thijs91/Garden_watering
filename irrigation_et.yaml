@@ -1,0 +1,337 @@
+################################################################################################################################################################
+## PACKAGE: ET0 / ETc (uurlijk, mm/h)
+################################################################################################################################################################
+
+##------------------------------------------------------------------------------
+## INPUT HELPERS
+##------------------------------------------------------------------------------
+input_number:
+  wind_height_m:
+    name: Wind sensor height (m)
+    min: 0.5
+    max: 20
+    step: 0.1
+    mode: box
+
+  station_elevation_m:
+    name: Station elevation (m ASL)
+    min: -10
+    max: 200
+    step: 1
+    mode: box
+
+  kc_lawn_fixed:
+    name: Kc Lawn (fixed)
+    min: 0.2
+    max: 1.5
+    step: 0.01
+    mode: box
+
+  kc_veg_winter:
+    name: Kc Veg Winter (nov-mrt)
+    min: 0.1
+    max: 1.2
+    step: 0.01
+    mode: box
+    
+  kc_veg_shoulder:
+    name: Kc Veg Voor-/Najaar (apr, sep-okt)
+    min: 0.1
+    max: 1.2
+    step: 0.01
+    mode: box
+    
+  kc_veg_summer:
+    name: Kc Veg Zomer (mei-aug)
+    min: 0.1
+    max: 1.2
+    step: 0.01
+    mode: box
+
+  sm_dry_pct:
+    name: Soil moisture "dry" (%)
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+    
+  sm_wet_pct:
+    name: Soil moisture "wet" (%)
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+    
+  ke_max:
+    name: Max Ke when wet
+    min: 0.0
+    max: 0.4
+    step: 0.01
+    mode: box
+    
+  lawn_area:
+    name: Oppervlakte grasmat (m2)
+    min: 0
+    max: 100
+    step: 0.1
+    mode: box
+    
+  garden_border_area:
+    name: Oppervlakte border (m2)
+    min: 0
+    max: 100
+    step: 0.1
+    mode: box
+    
+  lawn_sprinkler:
+    name: Sprinklers grasmat totaal (L/min)
+    min: 0
+    max: 50
+    step: 0.1
+    mode: box
+    
+  garden_border_dripsystem:
+    name: Microdrip border totaal (L/min)
+    min: 0
+    max: 10
+    step: 0.1
+    mode: box
+
+##------------------------------------------------------------------------------
+## TEMPLATE — compacte ET Core (JSON) + afgeleide sensoren met fallbacks -> Berekening verdamping volgens FAO56-richtlijn
+##------------------------------------------------------------------------------
+template:
+  - sensor:
+      - name: "ET Core"
+        unique_id: et_core_json
+        icon: mdi:calculator-variant
+        state: >-
+          {%- set ID_TEMP   = 'sensor.gw3000a_outdoor_temperature' -%}
+          {%- set ID_RH     = 'sensor.gw3000a_humidity' -%}
+          {%- set ID_WIND   = 'sensor.gw3000a_wind_speed' -%}
+          {%- set ID_SOLAR  = 'sensor.gw3000a_solar_radiation' -%}
+          {%- set ID_PRESS  = 'sensor.gw3000a_absolute_pressure' -%}
+          {%- set ID_SOILSM = 'sensor.gw3000a_soil_moisture_1' -%}
+
+          {%- set T   = states(ID_TEMP)  | float(20) -%}
+          {%- set RH  = states(ID_RH)    | float(60) -%}
+          {%- set uz  = (states(ID_WIND) | float(0.0)) / 3.6 -%}
+          {%- set z   = states('input_number.wind_height_m') | float(1.5) -%}
+          {%- set u2  = ((uz*4.87) / log(67.8*z - 5.42)) if (67.8*z - 5.42) > 0 and log(67.8*z - 5.42) != 0 else uz -%}
+
+          {%- set Rs_MJ = (states(ID_SOLAR) | float(0.0)) * 0.0036 -%}
+          {%- set SM    = states(ID_SOILSM) | float(35) -%}
+
+          {%- set es    = 0.6108 * e ** ((17.27 * T) / (T + 237.3)) -%}
+          {%- set ea    = (RH / 100.0) * es -%}
+          {%- set Delta = 4098.0 * es / ((T + 237.3) ** 2) -%}
+          {%- set gamma = 0.000665 * ((states(ID_PRESS) | float(1013.25)) / 10.0) -%}
+
+          {%- set dr    = 1 + 0.033 * cos(2*pi*(now().timetuple().tm_yday | float)/365) -%}
+          {%- set sin_h = [ sin((state_attr('sun.sun','elevation') | float(0.0)) * pi / 180), 0.0 ] | max -%}
+          {%- set Rso   = (0.75 + 0.00002 * (states('input_number.station_elevation_m') | float(0))) * (1367.0 * dr * sin_h * 0.0036) -%}
+          {%- set Rn_pos = [
+                (1 - 0.23) * Rs_MJ
+                - (2.043e-10) * ((T + 273.16)**4)
+                  * (0.34 - 0.14 * sqrt([ea, 0] | max))
+                  * ( 1.35 * ( [0.0, [ ( Rs_MJ / (Rso if Rso > 0 else 0.0001) ), 1.0 ] | min ] | max ) - 0.35 ),
+                0.0
+              ] | max -%}
+
+          {%- set m = now().month -%}
+          {%- set kc_base =
+                (states('input_number.kc_veg_summer')  | float(0.65)) if m in [5,6,7,8]
+            else (states('input_number.kc_veg_shoulder')| float(0.50)) if m in [4,9,10]
+            else  (states('input_number.kc_veg_winter') | float(0.30)) -%}
+          {%- set sm_d  = states('input_number.sm_dry_pct') | float(30) -%}
+          {%- set sm_w  = states('input_number.sm_wet_pct') | float(47) -%}
+          {%- set ke_m  = states('input_number.ke_max')     | float(0.15) -%}
+          {%- set ke =
+                0 if SM <= sm_d
+                else (ke_m if SM >= sm_w else ke_m * ((SM - sm_d) / ((sm_w - sm_d) if (sm_w - sm_d) != 0 else 1))) -%}
+          {%- set kc_dyn = [ [ kc_base + ke, 0.20 ] | max, 1.15 ] | min -%}
+
+          {%- set num = 0.408 * Delta * Rn_pos + gamma * (37.0 / (T + 273.0)) * u2 * (es - ea) -%}
+          {%- set den = Delta + gamma * (1.0 + 0.34 * u2) -%}
+          {%- set et0 = (num / den) if den > 0 else 0 -%}
+
+          {{- {
+            "et0": et0,
+            "etc_veg": et0 * kc_dyn,
+            "etc_lawn": et0 * (states('input_number.kc_lawn_fixed') | float(0.95)),
+            "kc_base": kc_base,
+            "kc_dyn": kc_dyn,
+            "ke": ke,
+            "u2": u2,
+            "Rn_pos": Rn_pos
+          } | tojson -}}
+
+      # === Afgeleiden: parse de JSON state van sensor.et_core ===
+      - name: "ET0 Hourly (mm/h)"
+        unique_id: et0_hourly_mm_h
+        unit_of_measurement: "mm/h"
+        device_class: distance
+        state_class: measurement
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['et0'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "ETc Veg Hourly (mm/h)"
+        unique_id: etc_veg_hourly_mm_h
+        unit_of_measurement: "mm/h"
+        device_class: distance
+        state_class: measurement
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['etc_veg'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "ETc Lawn Hourly (mm/h)"
+        unique_id: etc_lawn_hourly_mm_h
+        unit_of_measurement: "mm/h"
+        device_class: distance
+        state_class: measurement
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['etc_lawn'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "Kc Veg Baseline (season)"
+        unique_id: kc_veg_baseline_season
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['kc_base'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "Kc Veg Extra Ke (soil)"
+        unique_id: kc_veg_extra_ke_soil
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['ke'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: "Kc Veg Dynamic"
+        unique_id: kc_veg_dynamic
+        state: >-
+          {% set s = states('sensor.et_core') | string | trim %}
+          {% if s[:1] == '{' %}
+            {% set d = s | from_json %}
+            {{ d['kc_dyn'] | float(0) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+        
+      - name: "Watering time garden"
+        unique_id: watering_time_garden
+        icon: mdi:watering-can-outline
+        unit_of_measurement: "min"
+        device_class: duration
+        state_class: measurement
+        state: >
+          {%- set lawn_area = states('input_number.lawn_area') | float(0) -%}
+          {%- set veg_area = states('input_number.garden_border_area') | float(0) -%}
+          {%- set sprinkler = states('input_number.lawn_sprinkler') | float(0) -%} 
+          {%- set drip = states('input_number.garden_border_dripsystem') | float(0) -%}
+          {%- set etc_lawn = (
+                (states('input_number.etc_lawn_total_since_watering') | float(0)) -
+                (states('input_number.sprinkler_total_rain_fallen') | float(0))
+              ) | round(3) -%}
+          {%- set etc_veg = (
+                (states('input_number.etc_veg_total_since_watering') | float(0)) -
+                (states('input_number.sprinkler_total_rain_fallen') | float(0))
+              ) | round(3) -%}
+          {%- set t_lawn = 0 if sprinkler == 0
+              else (((etc_lawn * lawn_area) / sprinkler) | round(0, 'ceil', 0)) -%}
+          {%- set t_veg = 0 if drip == 0
+              else (((etc_veg * veg_area) / drip) | round(0, 'ceil', 0)) -%}
+          {{ [t_lawn, t_veg] | max }}
+
+## ---------------------------------------------------------------------------------
+## INTEGRATION — mm/h → mm cumulatief
+## ---------------------------------------------------------------------------------
+sensor:
+  - platform: integration
+    name: ET0 integrated (mm)
+    unique_id: ET0_integrated
+    source: sensor.et0_hourly_mm_h
+    unit_time: h
+    method: trapezoidal
+    round: 3
+
+  - platform: integration
+    name: ETc Veg integrated (mm)
+    unique_id: ETc_Veg_integrated
+    source: sensor.etc_veg_hourly_mm_h
+    unit_time: h
+    method: trapezoidal
+    round: 3
+
+  - platform: integration
+    name: ETc Lawn integrated (mm)
+    unique_id: ETc_Lawn_integrated
+    source: sensor.etc_lawn_hourly_mm_h
+    unit_time: h
+    method: trapezoidal
+    round: 3
+    
+  - platform: statistics
+    name: ET0 last hour avg (mm/h)
+    unique_id: ET0_last_hour_avg
+    entity_id: sensor.et0_hourly_mm_h
+    state_characteristic: mean
+    max_age:
+      hours: 1 
+      
+  - platform: statistics
+    name: ETc Veg last hour avg (mm/h)
+    unique_id: ETc_Veg_last_hour_avg
+    entity_id: sensor.etc_veg_hourly_mm_h
+    state_characteristic: mean
+    max_age:
+      hours: 1  
+      
+  - platform: statistics
+    name: ETc Lawn last hour avg (mm/h)
+    unique_id: ETc_Lawn_last_hour_avg
+    entity_id: sensor.etc_lawn_hourly_mm_h
+    state_characteristic: mean
+    max_age:
+      hours: 1
+
+## ---------------------------------------------------------------------------------
+## UTILITY METERS — dagtotalen (mm/dag)
+## ---------------------------------------------------------------------------------
+utility_meter:
+  et0_daily:
+    unique_id: et0_daily_mm
+    source: sensor.et0_integrated_mm
+    cycle: daily
+  etc_veg_daily:
+    unique_id: etc_veg_daily_mm
+    source: sensor.etc_veg_integrated_mm
+    cycle: daily
+  etc_lawn_daily:
+    unique_id: etc_lawn_daily_mm
+    source: sensor.etc_lawn_integrated_mm
+    cycle: daily
